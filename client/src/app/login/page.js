@@ -6,17 +6,11 @@ import { useRouter } from 'next/navigation';
 import { Youtube, ShieldCheck, ListVideo, Sparkles, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { loginWithGoogle } = useAuth();
   const router = useRouter();
 
   const handleGoogleLogin = () => {
-    login({
-      name: 'Alex Johnson',
-      email: 'alex.johnson@gmail.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      googleId: '109823749281'
-    });
-    router.push('/dashboard');
+    loginWithGoogle();
   };
 
   return (
