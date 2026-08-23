@@ -222,14 +222,21 @@ router.put('/:id', async (req, res) => {
 router.get('/:id/videos', async (req, res) => {
   const youtube = getYouTubeClient();
   const playlistId = req.params.id;
+  const pageToken = req.query.pageToken;
+  const maxResults = parseInt(req.query.maxResults) || 50;
 
   if (youtube) {
     try {
-      const response = await youtube.playlistItems.list({
+      const listParams = {
         playlistId: playlistId,
         part: ['snippet', 'contentDetails'],
-        maxResults: 25
-      });
+        maxResults: maxResults
+      };
+      if (pageToken) {
+        listParams.pageToken = pageToken;
+      }
+
+      const response = await youtube.playlistItems.list(listParams);
 
       const items = (response.data.items || []).map(item => {
         const snippet = item.snippet || {};
@@ -252,6 +259,8 @@ router.get('/:id/videos', async (req, res) => {
         success: true,
         source: 'youtube_api',
         total: items.length,
+        nextPageToken: response.data.nextPageToken || null,
+        pageInfo: response.data.pageInfo || null,
         data: items
       });
     } catch (err) {
@@ -263,6 +272,7 @@ router.get('/:id/videos', async (req, res) => {
     success: true,
     source: 'youtube_api',
     total: 0,
+    nextPageToken: null,
     data: []
   });
 });

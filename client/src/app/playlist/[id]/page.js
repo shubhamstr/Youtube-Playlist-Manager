@@ -20,7 +20,10 @@ import {
   AlertCircle, 
   CheckCircle2, 
   X, 
-  ListVideo
+  ListVideo,
+  Filter,
+  ChevronDown,
+  Tv
 } from 'lucide-react';
 
 export default function PlaylistVideosPage({ params }) {
@@ -38,9 +41,14 @@ export default function PlaylistVideosPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Selection & Search State
+  // Pagination & Load More State
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Selection & Search & Channel Filter State
   const [selectedIds, setSelectedIds] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedChannel, setSelectedChannel] = useState('ALL');
 
   // Move Modal State
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -56,7 +64,7 @@ export default function PlaylistVideosPage({ params }) {
     }
   }, [isAuthenticated, authLoading, router]);
 
-  // Fetch single playlist details & videos & all user playlists
+  // Fetch single playlist details & initial videos & all user playlists
   const fetchData = async () => {
     setLoading(true);
     setError('');
@@ -68,11 +76,14 @@ export default function PlaylistVideosPage({ params }) {
         if (pJson.success) setPlaylist(pJson.data);
       }
 
-      // 2. Fetch playlist items/videos
+      // 2. Fetch initial playlist items/videos
       const vRes = await fetch(`http://localhost:5000/api/playlists/${playlistId}/videos`);
       if (vRes.ok) {
         const vJson = await vRes.json();
-        if (vJson.success) setVideos(vJson.data || []);
+        if (vJson.success) {
+          setVideos(vJson.data || []);
+          setNextPageToken(vJson.nextPageToken || null);
+        }
       }
 
       // 3. Fetch all playlists for target destination dropdown
@@ -89,17 +100,54 @@ export default function PlaylistVideosPage({ params }) {
     }
   };
 
+  // Fetch next batch of videos (View More Videos)
+  const handleLoadMore = async () => {
+    if (!nextPageToken || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const vRes = await fetch(`http://localhost:5000/api/playlists/${playlistId}/videos?pageToken=${nextPageToken}`);
+      if (vRes.ok) {
+        const vJson = await vRes.json();
+        if (vJson.success) {
+          setVideos(prev => [...prev, ...(vJson.data || [])]);
+          setNextPageToken(vJson.nextPageToken || null);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching more videos:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated && playlistId) {
       fetchData();
     }
   }, [isAuthenticated, playlistId]);
 
-  // Search filter
-  const filteredVideos = videos.filter(v => 
-    v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    v.channelTitle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Extract unique channels with video count
+  const channelOptions = React.useMemo(() => {
+    const counts = {};
+    videos.forEach(v => {
+      const ch = v.channelTitle || 'Unknown Channel';
+      counts[ch] = (counts[ch] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [videos]);
+
+  // Search & Channel Filter logic
+  const filteredVideos = videos.filter(v => {
+    const channelName = v.channelTitle || 'Unknown Channel';
+    const matchesSearch = 
+      v.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      channelName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesChannel = 
+      selectedChannel === 'ALL' || channelName === selectedChannel;
+    return matchesSearch && matchesChannel;
+  });
 
   // Checkbox handlers
   const toggleSelectVideo = (id) => {
@@ -268,22 +316,43 @@ export default function PlaylistVideosPage({ params }) {
             </div>
           )}
 
-          {/* Controls Bar: Search & Select All */}
+          {/* Controls Bar: Search, Channel Filter & Select All */}
           <div style={styles.controlsBar}>
-            <div style={styles.searchWrapper}>
-              <Search style={{ width: '16px', height: '16px', color: '#888', marginLeft: '12px' }} />
-              <input
-                type="text"
-                placeholder="Search videos in this playlist..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={styles.searchInput}
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-                  <X style={{ width: '14px', height: '14px' }} />
-                </button>
-              )}
+            <div style={styles.filterGroup}>
+              {/* Search input */}
+              <div style={styles.searchWrapper}>
+                <Search style={{ width: '16px', height: '16px', color: '#888', marginLeft: '12px' }} />
+                <input
+                  type="text"
+                  placeholder="Search videos in this playlist..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={styles.searchInput}
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+                    <X style={{ width: '14px', height: '14px' }} />
+                  </button>
+                )}
+              </div>
+
+              {/* Channel Filter Dropdown */}
+              <div style={styles.filterWrapper}>
+                <Tv style={{ width: '15px', height: '15px', color: '#FF0000', marginLeft: '12px', flexShrink: 0 }} />
+                <select
+                  value={selectedChannel}
+                  onChange={(e) => setSelectedChannel(e.target.value)}
+                  style={styles.filterSelect}
+                  title="Filter videos by channel"
+                >
+                  <option value="ALL">All Channels ({videos.length})</option>
+                  {channelOptions.map(ch => (
+                    <option key={ch.name} value={ch.name}>
+                      {ch.name} ({ch.count} {ch.count === 1 ? 'video' : 'videos'})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div style={styles.selectionControls}>
@@ -308,6 +377,37 @@ export default function PlaylistVideosPage({ params }) {
               )}
             </div>
           </div>
+
+          {/* Active Filter Pills Bar */}
+          {(selectedChannel !== 'ALL' || searchQuery) && (
+            <div style={styles.activeFilterRow}>
+              <span style={{ fontSize: '0.8rem', color: '#888' }}>Active filters:</span>
+              {selectedChannel !== 'ALL' && (
+                <span style={styles.filterPill}>
+                  <Tv style={{ width: '12px', height: '12px' }} />
+                  Channel: <strong>{selectedChannel}</strong>
+                  <button onClick={() => setSelectedChannel('ALL')} style={styles.removePillBtn}>
+                    <X style={{ width: '12px', height: '12px' }} />
+                  </button>
+                </span>
+              )}
+              {searchQuery && (
+                <span style={styles.filterPill}>
+                  <Search style={{ width: '12px', height: '12px' }} />
+                  Query: <strong>"{searchQuery}"</strong>
+                  <button onClick={() => setSearchQuery('')} style={styles.removePillBtn}>
+                    <X style={{ width: '12px', height: '12px' }} />
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={() => { setSelectedChannel('ALL'); setSearchQuery(''); }}
+                style={styles.clearAllFiltersBtn}
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
 
           {/* Floating Action Bar when videos selected */}
           {selectedIds.length > 0 && (
@@ -344,75 +444,102 @@ export default function PlaylistVideosPage({ params }) {
               <p style={{ color: '#FFF', margin: '8px 0 0 0' }}>{error}</p>
             </div>
           ) : filteredVideos.length > 0 ? (
-            <div style={styles.videoGrid}>
-              {filteredVideos.map((video, idx) => {
-                const isSelected = selectedIds.includes(video.id);
-                return (
-                  <div
-                    key={video.id}
-                    className="glass-card"
-                    onClick={() => toggleSelectVideo(video.id)}
-                    style={{
-                      ...styles.videoCard,
-                      borderColor: isSelected ? '#FF0000' : 'rgba(255, 255, 255, 0.08)',
-                      backgroundColor: isSelected ? 'rgba(255, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.03)'
-                    }}
-                  >
-                    {/* Checkbox Icon */}
-                    <div style={styles.checkboxContainer}>
-                      {isSelected ? (
-                        <CheckSquare style={{ width: '20px', height: '20px', color: '#FF0000' }} />
-                      ) : (
-                        <Square style={{ width: '20px', height: '20px', color: '#555' }} />
-                      )}
-                    </div>
-
-                    {/* Video Index */}
-                    <span style={styles.videoIndex}>#{idx + 1}</span>
-
-                    {/* Video Thumbnail */}
-                    <div style={styles.videoThumbWrapper}>
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        style={styles.videoThumb}
-                      />
-                      <div style={styles.playIconOverlay}>
-                        <Play style={{ width: '14px', height: '14px', fill: '#FFF' }} />
-                      </div>
-                    </div>
-
-                    {/* Video Info */}
-                    <div style={styles.videoInfo}>
-                      <h4 style={styles.videoTitle} title={video.title}>
-                        {video.title}
-                      </h4>
-                      {video.channelTitle && (
-                        <span style={styles.channelName}>{video.channelTitle}</span>
-                      )}
-                    </div>
-
-                    {/* Open External Watch Link */}
-                    <a
-                      href={video.youtubeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      style={styles.watchLink}
-                      title="Watch on YouTube"
+            <>
+              <div style={styles.videoGrid}>
+                {filteredVideos.map((video, idx) => {
+                  const isSelected = selectedIds.includes(video.id);
+                  return (
+                    <div
+                      key={video.id}
+                      className="glass-card"
+                      onClick={() => toggleSelectVideo(video.id)}
+                      style={{
+                        ...styles.videoCard,
+                        borderColor: isSelected ? '#FF0000' : 'rgba(255, 255, 255, 0.08)',
+                        backgroundColor: isSelected ? 'rgba(255, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.03)'
+                      }}
                     >
-                      <ExternalLink style={{ width: '16px', height: '16px' }} />
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
+                      {/* Checkbox Icon */}
+                      <div style={styles.checkboxContainer}>
+                        {isSelected ? (
+                          <CheckSquare style={{ width: '20px', height: '20px', color: '#FF0000' }} />
+                        ) : (
+                          <Square style={{ width: '20px', height: '20px', color: '#555' }} />
+                        )}
+                      </div>
+
+                      {/* Video Index */}
+                      <span style={styles.videoIndex}>#{idx + 1}</span>
+
+                      {/* Video Thumbnail */}
+                      <div style={styles.videoThumbWrapper}>
+                        <img
+                          src={video.thumbnail}
+                          alt={video.title}
+                          style={styles.videoThumb}
+                        />
+                        <div style={styles.playIconOverlay}>
+                          <Play style={{ width: '14px', height: '14px', fill: '#FFF' }} />
+                        </div>
+                      </div>
+
+                      {/* Video Info */}
+                      <div style={styles.videoInfo}>
+                        <h4 style={styles.videoTitle} title={video.title}>
+                          {video.title}
+                        </h4>
+                        {video.channelTitle && (
+                          <span style={styles.channelName}>{video.channelTitle}</span>
+                        )}
+                      </div>
+
+                      {/* Open External Watch Link */}
+                      <a
+                        href={video.youtubeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={styles.watchLink}
+                        title="Watch on YouTube"
+                      >
+                        <ExternalLink style={{ width: '16px', height: '16px' }} />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* View More Videos Pagination Button */}
+              {nextPageToken && (
+                <div style={styles.loadMoreContainer}>
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    style={styles.loadMoreBtn}
+                  >
+                    {loadingMore ? (
+                      <>
+                        <div style={styles.btnSpinner} />
+                        <span>Loading More Videos...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown style={{ width: '18px', height: '18px' }} />
+                        <span>View More Videos ({videos.length} loaded)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="glass-card" style={styles.noDataCard}>
               <ListVideo style={{ width: '38px', height: '38px', color: '#888' }} />
               <h3 style={{ color: '#FFF', marginTop: '12px', fontSize: '1.1rem' }}>No Videos Found</h3>
               <p style={{ color: '#AAA', fontSize: '0.88rem' }}>
-                {searchQuery ? `No videos match your search "${searchQuery}"` : 'This playlist does not contain any videos.'}
+                {searchQuery || selectedChannel !== 'ALL'
+                  ? 'No videos match your active channel/search filters.'
+                  : 'This playlist does not contain any videos.'}
               </p>
             </div>
           )}
@@ -961,5 +1088,98 @@ const styles = {
     borderRadius: '10px',
     fontSize: '0.84rem',
     marginBottom: '16px',
+  },
+  filterGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    flex: '1',
+    minWidth: '280px',
+    flexWrap: 'wrap',
+  },
+  filterWrapper: {
+    display: 'flex',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '20px',
+    minWidth: '180px',
+    maxWidth: '260px',
+  },
+  filterSelect: {
+    width: '100%',
+    backgroundColor: 'transparent',
+    border: 'none',
+    outline: 'none',
+    color: '#FFF',
+    padding: '10px 12px 10px 8px',
+    fontSize: '0.84rem',
+    cursor: 'pointer',
+    borderRadius: '20px',
+  },
+  activeFilterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    marginBottom: '16px',
+    flexWrap: 'wrap',
+  },
+  filterPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    backgroundColor: 'rgba(255, 0, 0, 0.12)',
+    border: '1px solid rgba(255, 0, 0, 0.25)',
+    color: '#EEE',
+    padding: '4px 10px',
+    borderRadius: '16px',
+    fontSize: '0.78rem',
+  },
+  removePillBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#FF4D4D',
+    cursor: 'pointer',
+    padding: 0,
+    display: 'flex',
+    alignItems: 'center',
+    marginLeft: '2px',
+  },
+  clearAllFiltersBtn: {
+    background: 'none',
+    border: 'none',
+    color: '#888',
+    fontSize: '0.78rem',
+    textDecoration: 'underline',
+    cursor: 'pointer',
+  },
+  loadMoreContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginTop: '28px',
+    marginBottom: '16px',
+  },
+  loadMoreBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    color: '#FFF',
+    padding: '12px 28px',
+    borderRadius: '24px',
+    fontSize: '0.88rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.3)',
+  },
+  btnSpinner: {
+    width: '16px',
+    height: '16px',
+    border: '2px solid rgba(255, 255, 255, 0.2)',
+    borderTopColor: '#FF0000',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
   }
 };
