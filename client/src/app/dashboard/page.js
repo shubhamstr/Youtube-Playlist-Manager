@@ -6,10 +6,10 @@ import Sidebar from '../../components/Sidebar';
 import PlaylistCard from '../../components/PlaylistCard';
 import { useAuth } from '../../context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { ListVideo, PlayCircle, Lock, RefreshCw, Plus, Layers, Youtube, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { ListVideo, PlayCircle, Lock, RefreshCw, Plus, Layers, Youtube, CheckCircle2, AlertCircle, X, Eye, Edit3, ExternalLink } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, loginWithGoogle } = useAuth();
   const router = useRouter();
 
   const [playlists, setPlaylists] = useState([]);
@@ -29,6 +29,18 @@ export default function DashboardPage() {
     privacy: 'private'
   });
 
+  // Modal State for Viewing a Playlist
+  const [selectedPlaylistForView, setSelectedPlaylistForView] = useState(null);
+  const [viewVideos, setViewVideos] = useState([]);
+  const [loadingViewVideos, setLoadingViewVideos] = useState(false);
+
+  // Modal State for Editing a Playlist
+  const [selectedPlaylistForEdit, setSelectedPlaylistForEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({ title: '', description: '', privacy: 'private' });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editSuccess, setEditSuccess] = useState('');
+
   // Protect Dashboard Route
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -43,69 +55,25 @@ export default function DashboardPage() {
       const res = await fetch('http://localhost:5000/api/playlists');
       if (res.ok) {
         const json = await res.json();
-        setPlaylists(json.data || []);
+        const data = json.data || [];
+        setPlaylists(data);
         setDataSource(json.source || 'express_api');
 
         if (json.source === 'youtube_api') {
-          setStatusMessage(`Live YouTube Playlists (${json.total})`);
-        } else if (json.source === 'fallback_error') {
-          setStatusMessage('YouTube API Error (Showing Demo)');
+          setStatusMessage(data.length > 0 ? `Live YouTube Playlists (${json.total})` : 'Connected to Google (0 Playlists)');
+        } else if (json.source === 'youtube_api_error') {
+          setStatusMessage('YouTube API Error');
         } else {
-          setStatusMessage('Demo Mode (Sign in with Google)');
+          setStatusMessage('Not Signed In');
         }
       } else {
         throw new Error('API request failed');
       }
     } catch (err) {
-      console.warn('Backend server unreachable, using standalone mock data:', err);
+      console.warn('Backend server unreachable:', err);
       setDataSource('offline');
       setStatusMessage('Backend Server Offline');
-      setPlaylists([
-        {
-          id: 'pl-001',
-          title: 'Web Dev Mastery 2026',
-          description: 'Complete roadmap covering Next.js, React, Node.js, and Modern Web Architecture.',
-          videoCount: 42,
-          privacy: 'Public',
-          thumbnail: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=600&auto=format&fit=crop&q=80',
-          updatedAt: '2 hours ago',
-          youtubeUrl: 'https://www.youtube.com',
-          tags: ['Coding', 'Web', 'Tutorial']
-        },
-        {
-          id: 'pl-002',
-          title: 'Chillhop & Lofi Beats',
-          description: 'Relaxing ambient and lofi music for deep focus and coding sessions.',
-          videoCount: 128,
-          privacy: 'Public',
-          thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-          updatedAt: '1 day ago',
-          youtubeUrl: 'https://www.youtube.com',
-          tags: ['Music', 'Focus', 'Lofi']
-        },
-        {
-          id: 'pl-003',
-          title: 'AI & Machine Learning Insights',
-          description: 'Keynotes, paper breakdowns, and hands-on LLM engineering guides.',
-          videoCount: 19,
-          privacy: 'Unlisted',
-          thumbnail: 'https://images.unsplash.com/photo-1677442136019-21780efad99a?w=600&auto=format&fit=crop&q=80',
-          updatedAt: '3 days ago',
-          youtubeUrl: 'https://www.youtube.com',
-          tags: ['AI', 'Tech', 'Research']
-        },
-        {
-          id: 'pl-004',
-          title: 'UI/UX Design Trends',
-          description: 'Glassmorphic designs, CSS animations, typography and design systems.',
-          videoCount: 34,
-          privacy: 'Private',
-          thumbnail: 'https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?w=600&auto=format&fit=crop&q=80',
-          updatedAt: '5 days ago',
-          youtubeUrl: 'https://www.youtube.com',
-          tags: ['Design', 'UI', 'Creative']
-        }
-      ]);
+      setPlaylists([]);
     } finally {
       setLoading(false);
     }
@@ -149,6 +117,71 @@ export default function DashboardPage() {
       setCreateError(err.message);
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  // Open View Playlist Modal
+  const handleOpenView = async (playlist) => {
+    setSelectedPlaylistForView(playlist);
+    setLoadingViewVideos(true);
+    setViewVideos([]);
+    try {
+      const res = await fetch(`http://localhost:5000/api/playlists/${playlist.id}/videos`);
+      if (res.ok) {
+        const json = await res.json();
+        setViewVideos(json.data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching playlist videos:', err);
+    } finally {
+      setLoadingViewVideos(false);
+    }
+  };
+
+  // Open Edit Playlist Modal
+  const handleOpenEdit = (playlist) => {
+    setSelectedPlaylistForEdit(playlist);
+    setEditFormData({
+      title: playlist.title || '',
+      description: playlist.description || '',
+      privacy: (playlist.privacy || 'private').toLowerCase()
+    });
+    setEditError('');
+    setEditSuccess('');
+  };
+
+  // Submit Edit Playlist Form
+  const handleUpdatePlaylist = async (e) => {
+    e.preventDefault();
+    if (!selectedPlaylistForEdit) return;
+
+    setEditLoading(true);
+    setEditError('');
+    setEditSuccess('');
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/playlists/${selectedPlaylistForEdit.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editFormData)
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Failed to update playlist');
+      }
+
+      setEditSuccess(`🎉 Playlist updated successfully!`);
+
+      setTimeout(() => {
+        setSelectedPlaylistForEdit(null);
+        setEditSuccess('');
+        fetchPlaylists();
+      }, 1200);
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -292,106 +325,316 @@ export default function DashboardPage() {
           ) : filteredPlaylists.length > 0 ? (
             <div style={styles.grid}>
               {filteredPlaylists.map(playlist => (
-                <PlaylistCard key={playlist.id} playlist={playlist} />
+                <PlaylistCard
+                  key={playlist.id}
+                  playlist={playlist}
+                  onView={handleOpenView}
+                  onEdit={handleOpenEdit}
+                />
               ))}
             </div>
           ) : (
-            <div style={styles.emptyState}>
-              <Layers style={{ width: '48px', height: '48px', color: '#666' }} />
-              <h3 style={{ color: '#FFF', marginTop: '12px' }}>No playlists found</h3>
-              <p style={{ color: '#888', fontSize: '0.85rem' }}>
-                Try selecting a different privacy filter or create a new playlist.
+            <div className="glass-card" style={styles.noDataCard}>
+              <div style={styles.noDataIconContainer}>
+                <Youtube style={{ width: '38px', height: '38px', color: '#FF0000' }} />
+              </div>
+              <h3 style={styles.noDataTitle}>
+                {dataSource === 'youtube_api' ? 'No Playlists Found' : 'No Data Available'}
+              </h3>
+              <p style={styles.noDataSubtitle}>
+                {dataSource === 'youtube_api'
+                  ? 'Your YouTube account currently has no playlists created. You can create a new playlist using the button above or connect a different Google account.'
+                  : 'You are currently not showing live data. Sign in with your Google account to access, sync, and manage your YouTube channel playlists.'}
               </p>
-            </div>
-          )}
-
-          {/* Create Playlist Modal */}
-          {showModal && (
-            <div style={styles.modalOverlay}>
-              <div className="glass-card" style={styles.modalContent}>
-                <div style={styles.modalHeader}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Youtube style={{ width: '20px', height: '20px', color: '#FF0000' }} />
-                    <h3 style={{ color: '#FFF', margin: 0 }}>Create YouTube Playlist</h3>
-                  </div>
-                  <button onClick={() => setShowModal(false)} style={styles.closeBtn}>
-                    <X style={{ width: '18px', height: '18px', color: '#AAA' }} />
-                  </button>
-                </div>
-
-                {createError && (
-                  <div style={styles.errorBox}>
-                    <AlertCircle style={{ width: '16px', height: '16px' }} />
-                    <span>{createError}</span>
-                  </div>
-                )}
-
-                {createSuccess && (
-                  <div style={styles.successBox}>
-                    <CheckCircle2 style={{ width: '16px', height: '16px' }} />
-                    <span>{createSuccess}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleCreatePlaylist} style={styles.form}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Playlist Title *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. My Favorite Tutorials 2026"
-                      value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Description</label>
-                    <textarea
-                      rows={3}
-                      placeholder="Describe what this playlist is about..."
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      style={{ ...styles.input, resize: 'vertical' }}
-                    />
-                  </div>
-
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Privacy Setting</label>
-                    <select
-                      value={formData.privacy}
-                      onChange={(e) => setFormData({ ...formData, privacy: e.target.value })}
-                      style={styles.input}
-                    >
-                      <option value="private">Private (Only you can see)</option>
-                      <option value="unlisted">Unlisted (Anyone with link can see)</option>
-                      <option value="public">Public (Everyone can search & view)</option>
-                    </select>
-                  </div>
-
-                  <div style={styles.modalFooter}>
-                    <button
-                      type="button"
-                      onClick={() => setShowModal(false)}
-                      style={styles.cancelBtn}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={createLoading}
-                      style={styles.submitBtn}
-                    >
-                      {createLoading ? 'Creating...' : 'Create Playlist'}
-                    </button>
-                  </div>
-                </form>
+              <div style={styles.noDataActions}>
+                <button
+                  onClick={loginWithGoogle}
+                  style={styles.googleSignInBtn}
+                >
+                  <svg style={{ width: '18px', height: '18px' }} viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Sign in to Google Account</span>
+                </button>
               </div>
             </div>
           )}
+
         </main>
       </div>
+
+      {/* Create Playlist Modal */}
+      {showModal && (
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false); }}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Youtube style={{ width: '20px', height: '20px', color: '#FF0000' }} />
+                <h3 style={{ color: '#FFF', margin: 0 }}>Create YouTube Playlist</h3>
+              </div>
+              <button onClick={() => setShowModal(false)} style={styles.closeBtn}>
+                <X style={{ width: '18px', height: '18px', color: '#AAA' }} />
+              </button>
+            </div>
+
+            {createError && (
+              <div style={styles.errorBox}>
+                <AlertCircle style={{ width: '16px', height: '16px' }} />
+                <span>{createError}</span>
+              </div>
+            )}
+
+            {createSuccess && (
+              <div style={styles.successBox}>
+                <CheckCircle2 style={{ width: '16px', height: '16px' }} />
+                <span>{createSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreatePlaylist} style={styles.form}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Playlist Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. My Favorite Tutorials 2026"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Description</label>
+                <textarea
+                  rows={3}
+                  placeholder="Describe what this playlist is about..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  style={{ ...styles.input, resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Privacy Setting</label>
+                <select
+                  value={formData.privacy}
+                  onChange={(e) => setFormData({ ...formData, privacy: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="private">Private (Only you can see)</option>
+                  <option value="unlisted">Unlisted (Anyone with link can see)</option>
+                  <option value="public">Public (Everyone can search & view)</option>
+                </select>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  style={styles.cancelBtn}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  style={styles.submitBtn}
+                >
+                  {createLoading ? 'Creating...' : 'Create Playlist'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Playlist Details & Videos Modal */}
+      {selectedPlaylistForView && (
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) setSelectedPlaylistForView(null); }}>
+          <div style={{ ...styles.modalContent, maxWidth: '600px' }}>
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Eye style={{ width: '20px', height: '20px', color: '#FF0000' }} />
+                <h3 style={{ color: '#FFF', margin: 0 }}>View Playlist Details</h3>
+              </div>
+              <button onClick={() => setSelectedPlaylistForView(null)} style={styles.closeBtn}>
+                <X style={{ width: '18px', height: '18px', color: '#AAA' }} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <img
+                src={selectedPlaylistForView.thumbnail}
+                alt={selectedPlaylistForView.title}
+                style={{ width: '140px', height: '90px', objectFit: 'cover', borderRadius: '12px' }}
+              />
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <h2 style={{ fontSize: '1.15rem', color: '#FFF', margin: '0 0 6px 0', fontWeight: '700' }}>
+                  {selectedPlaylistForView.title}
+                </h2>
+                <p style={{ fontSize: '0.82rem', color: '#AAA', margin: '0 0 10px 0', lineHeight: '1.4' }}>
+                  {selectedPlaylistForView.description || 'No description provided.'}
+                </p>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={styles.privacyBadge}>
+                    <span style={{ fontSize: '0.72rem', color: '#CCC', fontWeight: '600' }}>{selectedPlaylistForView.privacy}</span>
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#888' }}>
+                    {selectedPlaylistForView.videoCount} {selectedPlaylistForView.videoCount === 1 ? 'video' : 'videos'}
+                  </span>
+                  <a
+                    href={selectedPlaylistForView.youtubeUrl || `https://www.youtube.com/playlist?list=${selectedPlaylistForView.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#FF0000', fontSize: '0.8rem', textDecoration: 'none', fontWeight: '600', marginLeft: 'auto' }}
+                  >
+                    <ExternalLink style={{ width: '14px', height: '14px' }} />
+                    Open on YouTube
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <h4 style={{ color: '#DDD', fontSize: '0.88rem', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+              Videos in Playlist ({viewVideos.length})
+            </h4>
+
+            <div style={{ maxHeight: '260px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+              {loadingViewVideos ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '30px', color: '#888', gap: '8px' }}>
+                  <div style={styles.spinner} />
+                  <span>Loading playlist videos...</span>
+                </div>
+              ) : viewVideos.length > 0 ? (
+                viewVideos.map(video => (
+                  <div key={video.id} style={{ display: 'flex', gap: '12px', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', padding: '8px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      style={{ width: '80px', height: '48px', objectFit: 'cover', borderRadius: '6px' }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h5 style={{ color: '#FFF', fontSize: '0.84rem', margin: '0 0 4px 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {video.title}
+                      </h5>
+                      {video.channelTitle && (
+                        <span style={{ color: '#888', fontSize: '0.74rem' }}>{video.channelTitle}</span>
+                      )}
+                    </div>
+                    <a
+                      href={video.youtubeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#FF0000', padding: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      title="Watch Video"
+                    >
+                      <ExternalLink style={{ width: '15px', height: '15px' }} />
+                    </a>
+                  </div>
+                ))
+              ) : (
+                <span style={{ color: '#888', fontSize: '0.85rem', textAlign: 'center', padding: '20px 0' }}>No videos found in this playlist.</span>
+              )}
+            </div>
+
+            <div style={{ ...styles.modalFooter, marginTop: '20px' }}>
+              <button onClick={() => setSelectedPlaylistForView(null)} style={styles.cancelBtn}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Playlist Modal */}
+      {selectedPlaylistForEdit && (
+        <div style={styles.modalOverlay} onClick={(e) => { if (e.target === e.currentTarget) setSelectedPlaylistForEdit(null); }}>
+          <div style={styles.modalContent}>
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit3 style={{ width: '20px', height: '20px', color: '#FF0000' }} />
+                <h3 style={{ color: '#FFF', margin: 0 }}>Edit Playlist</h3>
+              </div>
+              <button onClick={() => setSelectedPlaylistForEdit(null)} style={styles.closeBtn}>
+                <X style={{ width: '18px', height: '18px', color: '#AAA' }} />
+              </button>
+            </div>
+
+            {editError && (
+              <div style={styles.errorBox}>
+                <AlertCircle style={{ width: '16px', height: '16px' }} />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            {editSuccess && (
+              <div style={styles.successBox}>
+                <CheckCircle2 style={{ width: '16px', height: '16px' }} />
+                <span>{editSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdatePlaylist} style={styles.form}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Playlist Name / Title *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter new playlist name..."
+                  value={editFormData.title}
+                  onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Description</label>
+                <textarea
+                  rows={3}
+                  placeholder="Update playlist description..."
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  style={{ ...styles.input, resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Privacy Setting</label>
+                <select
+                  value={editFormData.privacy}
+                  onChange={(e) => setEditFormData({ ...editFormData, privacy: e.target.value })}
+                  style={styles.input}
+                >
+                  <option value="private">Private (Only you can see)</option>
+                  <option value="unlisted">Unlisted (Anyone with link can see)</option>
+                  <option value="public">Public (Everyone can search & view)</option>
+                </select>
+              </div>
+
+              <div style={styles.modalFooter}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlaylistForEdit(null)}
+                  style={styles.cancelBtn}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  style={styles.submitBtn}
+                >
+                  {editLoading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -578,23 +821,28 @@ const styles = {
     position: 'fixed',
     top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    backdropFilter: 'blur(6px)',
+    width: '100vw',
+    height: '100vh',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1000,
+    zIndex: 999999,
     padding: '20px',
+    overflowY: 'auto',
   },
   modalContent: {
     width: '100%',
     maxWidth: '460px',
     backgroundColor: '#141414',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
     borderRadius: '20px',
     padding: '24px',
+    boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 0, 0, 0.15)',
+    position: 'relative',
+    margin: 'auto',
   },
   modalHeader: {
     display: 'flex',
@@ -682,5 +930,62 @@ const styles = {
     fontSize: '0.82rem',
     fontWeight: '700',
     cursor: 'pointer',
+  },
+  noDataCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '48px 32px',
+    textAlign: 'center',
+    borderRadius: '20px',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    border: '1px dashed rgba(255, 255, 255, 0.12)',
+    margin: '10px 0',
+  },
+  noDataIconContainer: {
+    width: '72px',
+    height: '72px',
+    borderRadius: '20px',
+    backgroundColor: 'rgba(255, 0, 0, 0.1)',
+    border: '1px solid rgba(255, 0, 0, 0.25)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '18px',
+    boxShadow: '0 8px 24px rgba(255, 0, 0, 0.15)',
+  },
+  noDataTitle: {
+    fontSize: '1.35rem',
+    fontWeight: '800',
+    color: '#FFFFFF',
+    margin: '0 0 8px 0',
+    letterSpacing: '-0.01em',
+  },
+  noDataSubtitle: {
+    fontSize: '0.88rem',
+    color: '#AAAAAA',
+    maxWidth: '480px',
+    margin: '0 0 24px 0',
+    lineHeight: '1.5',
+  },
+  noDataActions: {
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  googleSignInBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '10px',
+    backgroundColor: '#FFFFFF',
+    color: '#1F1F1F',
+    border: 'none',
+    borderRadius: '14px',
+    padding: '12px 24px',
+    fontSize: '0.92rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    boxShadow: '0 4px 16px rgba(255, 255, 255, 0.15)',
+    transition: 'all 0.2s ease',
   }
 };

@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Play, Lock, Globe, EyeOff, ExternalLink, Tv } from 'lucide-react';
+import { Play, Lock, Globe, EyeOff, ExternalLink, Tv, Eye, Edit3 } from 'lucide-react';
 
-export default function PlaylistCard({ playlist }) {
+export default function PlaylistCard({ playlist, onView, onEdit }) {
   const [imgError, setImgError] = useState(false);
 
   const getPrivacyIcon = (privacy) => {
@@ -17,7 +17,8 @@ export default function PlaylistCard({ playlist }) {
     }
   };
 
-  const handleOpenPlaylist = () => {
+  const handleOpenPlaylist = (e) => {
+    e.stopPropagation();
     const url = playlist.youtubeUrl || `https://www.youtube.com/playlist?list=${playlist.id}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -25,7 +26,7 @@ export default function PlaylistCard({ playlist }) {
   return (
     <div className="glass-card" style={styles.card}>
       {/* Thumbnail Container */}
-      <div style={styles.thumbnailWrapper}>
+      <div style={styles.thumbnailWrapper} onClick={() => onView && onView(playlist)}>
         {!imgError && playlist.thumbnail ? (
           <img
             src={playlist.thumbnail}
@@ -56,7 +57,9 @@ export default function PlaylistCard({ playlist }) {
           <span style={styles.updatedText}>{playlist.updatedAt}</span>
         </div>
 
-        <h3 style={styles.title} title={playlist.title}>{playlist.title}</h3>
+        <h3 style={styles.title} title={playlist.title} onClick={() => onView && onView(playlist)}>
+          {playlist.title}
+        </h3>
         
         {playlist.channelTitle && (
           <span style={styles.channelText}>by {playlist.channelTitle}</span>
@@ -73,11 +76,22 @@ export default function PlaylistCard({ playlist }) {
           ))}
         </div>
 
-        {/* Action Button */}
-        <button onClick={handleOpenPlaylist} style={styles.actionBtn} title="Open in YouTube">
-          <ExternalLink style={{ width: '14px', height: '14px' }} />
-          <span>View on YouTube</span>
-        </button>
+        {/* Action Button Row */}
+        <div style={styles.actionRow}>
+          <button onClick={() => onView && onView(playlist)} style={styles.viewBtn} title="View Playlist Details">
+            <Eye style={{ width: '14px', height: '14px' }} />
+            <span>View</span>
+          </button>
+          
+          <button onClick={() => onEdit && onEdit(playlist)} style={styles.editBtn} title="Edit Playlist Name & Details">
+            <Edit3 style={{ width: '14px', height: '14px' }} />
+            <span>Edit</span>
+          </button>
+
+          <button onClick={handleOpenPlaylist} style={styles.ytBtn} title="Open on YouTube">
+            <ExternalLink style={{ width: '14px', height: '14px' }} />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -97,6 +111,7 @@ const styles = {
     height: '160px',
     backgroundColor: '#151515',
     overflow: 'hidden',
+    cursor: 'pointer',
   },
   thumbnailImg: {
     width: '100%',
@@ -163,6 +178,7 @@ const styles = {
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
     overflow: 'hidden',
+    cursor: 'pointer',
   },
   channelText: {
     fontSize: '0.75rem',
@@ -194,21 +210,53 @@ const styles = {
     padding: '2px 8px',
     borderRadius: '4px',
   },
-  actionBtn: {
+  actionRow: {
     marginTop: 'auto',
-    width: '100%',
-    backgroundColor: '#FF0000',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  viewBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
     color: '#FFFFFF',
-    border: 'none',
     borderRadius: '10px',
-    padding: '9px 14px',
-    fontSize: '0.82rem',
+    padding: '8px 12px',
+    fontSize: '0.8rem',
     fontWeight: '600',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '8px',
+    gap: '6px',
     transition: 'background 0.2s ease',
+  },
+  editBtn: {
+    flex: 1,
+    backgroundColor: '#FF0000',
+    color: '#FFFFFF',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    fontSize: '0.8rem',
+    fontWeight: '600',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    transition: 'background 0.2s ease',
+  },
+  ytBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(255, 255, 255, 0.12)',
+    color: '#AAA',
+    borderRadius: '10px',
+    padding: '8px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   }
 };
