@@ -1,33 +1,48 @@
 'use client';
 
-import React from 'react';
-import { Play, Lock, Globe, EyeOff, MoreVertical } from 'lucide-react';
+import React, { useState } from 'react';
+import { Play, Lock, Globe, EyeOff, ExternalLink, Tv } from 'lucide-react';
 
 export default function PlaylistCard({ playlist }) {
+  const [imgError, setImgError] = useState(false);
+
   const getPrivacyIcon = (privacy) => {
     switch (privacy) {
       case 'Private':
         return <Lock style={{ width: '12px', height: '12px', color: '#FFB800' }} />;
       case 'Unlisted':
-        return <EyeOff style={{ width: '12px', height: '12px', color: '#888888' }} />;
+        return <EyeOff style={{ width: '12px', height: '12px', color: '#AAAAAA' }} />;
       default:
         return <Globe style={{ width: '12px', height: '12px', color: '#00E676' }} />;
     }
+  };
+
+  const handleOpenPlaylist = () => {
+    const url = playlist.youtubeUrl || `https://www.youtube.com/playlist?list=${playlist.id}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
     <div className="glass-card" style={styles.card}>
       {/* Thumbnail Container */}
       <div style={styles.thumbnailWrapper}>
-        <img
-          src={playlist.thumbnail}
-          alt={playlist.title}
-          style={styles.thumbnailImg}
-        />
+        {!imgError && playlist.thumbnail ? (
+          <img
+            src={playlist.thumbnail}
+            alt={playlist.title}
+            onError={() => setImgError(true)}
+            style={styles.thumbnailImg}
+          />
+        ) : (
+          <div style={styles.fallbackThumb}>
+            <Tv style={{ width: '36px', height: '36px', color: '#FF0000' }} />
+          </div>
+        )}
+
         {/* Overlay Count Badge */}
         <div style={styles.countBadge}>
           <Play style={{ width: '12px', height: '12px', fill: '#FFF' }} />
-          <span>{playlist.videoCount} videos</span>
+          <span>{playlist.videoCount} {playlist.videoCount === 1 ? 'video' : 'videos'}</span>
         </div>
       </div>
 
@@ -36,13 +51,18 @@ export default function PlaylistCard({ playlist }) {
         <div style={styles.headerRow}>
           <span style={styles.privacyBadge}>
             {getPrivacyIcon(playlist.privacy)}
-            <span style={{ fontSize: '0.72rem', color: '#CCC' }}>{playlist.privacy}</span>
+            <span style={{ fontSize: '0.72rem', color: '#CCC', fontWeight: '600' }}>{playlist.privacy}</span>
           </span>
           <span style={styles.updatedText}>{playlist.updatedAt}</span>
         </div>
 
-        <h3 style={styles.title}>{playlist.title}</h3>
-        <p style={styles.description}>{playlist.description}</p>
+        <h3 style={styles.title} title={playlist.title}>{playlist.title}</h3>
+        
+        {playlist.channelTitle && (
+          <span style={styles.channelText}>by {playlist.channelTitle}</span>
+        )}
+
+        <p style={styles.description}>{playlist.description || 'No description available for this playlist.'}</p>
 
         {/* Tags */}
         <div style={styles.tagRow}>
@@ -54,9 +74,9 @@ export default function PlaylistCard({ playlist }) {
         </div>
 
         {/* Action Button */}
-        <button style={styles.actionBtn}>
-          <Play style={{ width: '14px', height: '14px', fill: '#FFF' }} />
-          <span>View Playlist</span>
+        <button onClick={handleOpenPlaylist} style={styles.actionBtn} title="Open in YouTube">
+          <ExternalLink style={{ width: '14px', height: '14px' }} />
+          <span>View on YouTube</span>
         </button>
       </div>
     </div>
@@ -69,6 +89,7 @@ const styles = {
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
   },
   thumbnailWrapper: {
     position: 'relative',
@@ -82,6 +103,14 @@ const styles = {
     height: '100%',
     objectFit: 'cover',
     transition: 'transform 0.3s ease',
+  },
+  fallbackThumb: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.05)',
   },
   countBadge: {
     position: 'absolute',
@@ -115,8 +144,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: '2px 8px',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    padding: '3px 8px',
     borderRadius: '6px',
   },
   updatedText: {
@@ -127,8 +157,18 @@ const styles = {
     fontSize: '1rem',
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: '6px',
+    marginBottom: '2px',
     lineHeight: '1.3',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
+  channelText: {
+    fontSize: '0.75rem',
+    color: '#E50914',
+    fontWeight: '600',
+    marginBottom: '8px',
   },
   description: {
     fontSize: '0.82rem',
@@ -161,7 +201,7 @@ const styles = {
     color: '#FFFFFF',
     border: 'none',
     borderRadius: '10px',
-    padding: '8px 14px',
+    padding: '9px 14px',
     fontSize: '0.82rem',
     fontWeight: '600',
     cursor: 'pointer',
