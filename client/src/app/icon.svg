@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1A1A" />
+      <stop offset="100%" stop-color="#090909" />
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF2E2E" />
+      <stop offset="100%" stop-color="#CC0000" />
+    </linearGradient>
+    <filter id="redGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#FF0000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Background Squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="120" fill="url(#bgGrad)" stroke="rgba(255, 255, 255, 0.12)" stroke-width="8" />
+
+  <!-- YouTube Play Button Badge -->
+  <rect x="72" y="148" width="220" height="154" rx="44" fill="url(#redGrad)" filter="url(#redGlow)" />
+  
+  <!-- Play Triangle -->
+  <polygon points="160,190 212,225 160,260" fill="#FFFFFF" />
+
+  <!-- Playlist Rows / Bars -->
+  <rect x="320" y="160" width="120" height="24" rx="12" fill="#FFFFFF" opacity="0.95" />
+  <rect x="320" y="213" width="120" height="24" rx="12" fill="#FFFFFF" opacity="0.65" />
+  <rect x="320" y="266" width="88" height="24" rx="12" fill="#FFFFFF" opacity="0.35" />
+
+  <!-- Sub-playlist Indicator lines below -->
+  <rect x="72" y="340" width="368" height="22" rx="11" fill="#FFFFFF" opacity="0.85" />
+  <rect x="72" y="384" width="260" height="22" rx="11" fill="#FFFFFF" opacity="0.45" />
+</svg>
