@@ -120,23 +120,11 @@ export default function DashboardPage() {
     }
   };
 
-  // Open View Playlist Modal
-  const handleOpenView = async (playlist) => {
-    setSelectedPlaylistForView(playlist);
-    setLoadingViewVideos(true);
-    setViewVideos([]);
-    try {
-      const res = await fetch(`http://localhost:5000/api/playlists/${playlist.id}/videos`);
-      if (res.ok) {
-        const json = await res.json();
-        setViewVideos(json.data || []);
-      }
-    } catch (err) {
-      console.error('Error fetching playlist videos:', err);
-    } finally {
-      setLoadingViewVideos(false);
-    }
+  // Open View Playlist Screen in a New Tab
+  const handleOpenView = (playlist) => {
+    window.open(`/playlist/${playlist.id}`, '_blank');
   };
+
 
   // Open Edit Playlist Modal
   const handleOpenEdit = (playlist) => {

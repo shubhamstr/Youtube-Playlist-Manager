@@ -267,4 +267,73 @@ router.get('/:id/videos', async (req, res) => {
   });
 });
 
+// POST /api/playlists/move-videos - Move selected videos from one playlist to another
+router.post('/move-videos', async (req, res) => {
+  const youtube = getYouTubeClient();
+
+  if (!youtube) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required. Please sign in with Google to manage YouTube playlists.'
+    });
+  }
+
+  const { targetPlaylistId, items } = req.body;
+
+  if (!targetPlaylistId || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: 'Target playlist ID and non-empty items array are required.'
+    });
+  }
+
+  let movedCount = 0;
+  const errors = [];
+
+  for (const item of items) {
+    const { playlistItemId, videoId } = item;
+    if (!videoId) continue;
+
+    try {
+      // Step 1: Insert video into target playlist
+      await youtube.playlistItems.insert({
+        part: ['snippet'],
+        requestBody: {
+          snippet: {
+            playlistId: targetPlaylistId,
+            resourceId: {
+              kind: 'youtube#video',
+              videoId: videoId
+            }
+          }
+        }
+      });
+
+      // Step 2: Delete video from source playlist (if playlistItemId provided)
+      if (playlistItemId) {
+        try {
+          await youtube.playlistItems.delete({
+            id: playlistItemId
+          });
+        } catch (delErr) {
+          console.warn(`⚠️ Video added to target playlist, but failed to remove item ${playlistItemId} from source playlist:`, delErr.message);
+        }
+      }
+
+      movedCount++;
+    } catch (err) {
+      console.error(`❌ Error moving video ${videoId}:`, err.message);
+      errors.push(`Failed to move video ${videoId}: ${err.message}`);
+    }
+  }
+
+  return res.json({
+    success: movedCount > 0,
+    message: movedCount > 0 ? `Successfully moved ${movedCount} video(s) to target playlist.` : 'Failed to move selected videos.',
+    movedCount,
+    errors
+  });
+});
+
 module.exports = router;
+
